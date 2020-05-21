@@ -79,6 +79,7 @@ public class vSDKDocCopy {
             query.append("FROM ").append(queryObject).append(" ");
         }
         query.append("WHERE global_id__sys CONTAINS ('" + String.join("','", docGlobalIds) + "')");
+        query.append("ORDER BY global_version_id__sys ASC");
 
         StringBuilder logMessage = new StringBuilder();
         logMessage.append("Unprocessed documents query: ").append(query.toString());
