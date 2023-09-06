@@ -13,11 +13,11 @@ import com.veeva.vault.sdk.api.json.JsonArray;
 import com.veeva.vault.sdk.api.json.JsonData;
 import com.veeva.vault.sdk.api.json.JsonObject;
 import com.veeva.vault.sdk.api.json.JsonValueType;
-import com.veeva.vault.sdk.api.query.QueryResponse;
-import com.veeva.vault.sdk.api.query.QueryService;
+import com.veeva.vault.sdk.api.query.*;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /******************************************************************************
  * User-Defined Class:  vSDKDocCopy
@@ -31,7 +31,7 @@ import java.util.List;
  *              between Vaults.
  *
  *-----------------------------------------------------------------------------
- * Copyright (c) 2020 Veeva Systems Inc.  All Rights Reserved.
+ * Copyright (c) 2023 Veeva Systems Inc.  All Rights Reserved.
  *      This code is based on pre-existing content developed and
  *      owned by Veeva Systems Inc. and may only be used in connection
  *      with the deliverable with which it was provided to Customer.
@@ -321,13 +321,31 @@ public class vSDKDocCopy {
 
         LogService logService = ServiceLocator.locate(LogService.class);
         QueryService queryService = ServiceLocator.locate(QueryService.class);
+        List<Integer> recordCount = VaultCollections.newList();
 
         // Query to see any incoming IDs match to any existing documents.
-        StringBuilder query = new StringBuilder();
-        query.append("SELECT id FROM ALLVERSIONS documents WHERE version_link__sys = '").append(versionLinkId).append("'");
+        Query query = queryService
+                .newQueryBuilder()
+                .withSelect(VaultCollections.asList("id"))
+                .withFrom("ALLVERSIONS documents")
+                .withWhere("version_link__sys = '" + versionLinkId + "'")
+                .build();
 
-        QueryResponse queryResponse = queryService.query(query.toString());
-        if (queryResponse.getResultCount() == 0) {
+        QueryCountRequest queryCountRequest  = queryService
+                .newQueryCountRequestBuilder()
+                .withQuery(query)
+                .build();
+
+        queryService.count(queryCountRequest)
+                .onSuccess(queryResponse -> {
+                    recordCount.add((int)queryResponse.getTotalCount());
+                })
+                .onError(queryOperationError -> {
+                    logService.error("Failed to query records: " + queryOperationError.getMessage());
+                })
+                .execute();
+
+        if (recordCount.get(0) == 0) {
             return false;
         } else {
             logService.info("Found existing document version with version_link__sys: " + versionLinkId);
@@ -344,13 +362,32 @@ public class vSDKDocCopy {
 
         LogService logService = ServiceLocator.locate(LogService.class);
         QueryService queryService = ServiceLocator.locate(QueryService.class);
+        List<String> ids = VaultCollections.newList();
 
         // Query to see any incoming IDs match to any existing documents.
-        StringBuilder query = new StringBuilder();
-        query.append("SELECT id FROM ALLVERSIONS documents WHERE version_link__sys = '").append(versionLinkId).append("'");
-        QueryResponse queryResponse = queryService.query(query.toString());
-        List<String> ids = VaultCollections.newList();
-        queryResponse.streamResults().forEach(r -> ids.add(r.getValue("id", ValueType.STRING)));
+        Query query = queryService
+                .newQueryBuilder()
+                .withSelect(VaultCollections.asList("id"))
+                .withFrom("ALLVERSIONS documents")
+                .withWhere("version_link__sys = '" + versionLinkId + "'")
+                .build();
+
+        QueryExecutionRequest queryExecutionRequest = queryService.newQueryExecutionRequestBuilder()
+                .withQuery(query)
+                .build();
+
+        QueryOperation<QueryExecutionResponse> queryOperation = queryService.query(queryExecutionRequest);
+
+        queryOperation.onSuccess(queryExecutionResponse -> {
+                    queryExecutionResponse.streamResults().forEach(queryExecutionResult -> {
+                        ids.add(queryExecutionResult.getValue("id", ValueType.STRING));
+                    });
+                });
+            queryOperation.onError(queryOperationError -> {
+                logService.error("Failed to query records: " + queryOperationError.getMessage());
+            });
+            queryOperation.execute();
+
         if (!ids.isEmpty()) {
             StringBuilder debugMsg = new StringBuilder();
             debugMsg.append("Found existing document: id=").append(ids.get(0))
@@ -372,20 +409,36 @@ public class vSDKDocCopy {
     private static List<String> getAttachmentIdLocal(String sourceDocId){
         LogService logService = ServiceLocator.locate(LogService.class);
         QueryService queryService = ServiceLocator.locate(QueryService.class);
+        List<String> idList = VaultCollections.newList();
 
         // Query to see any incoming doc IDs have attachments against them.
-        StringBuilder query = new StringBuilder();
-        query.append("SELECT target_doc_id__v ");
-        query.append("FROM relationships ");
-        query.append("WHERE source_doc_id__v = '").append(sourceDocId).append("' ");
+        Query query = queryService
+                .newQueryBuilder()
+                .withSelect(VaultCollections.asList("target_doc_id__v"))
+                .withFrom("relationships")
+                .withWhere("source_doc_id__v = '" + sourceDocId + "'")
+                .build();
+
+        QueryExecutionRequest queryExecutionRequest = queryService.newQueryExecutionRequestBuilder()
+                .withQuery(query)
+                .build();
+
+        QueryOperation<QueryExecutionResponse> queryOperation = queryService.query(queryExecutionRequest);
+
+        queryOperation.onSuccess(queryExecutionResponse -> {
+            queryExecutionResponse.streamResults().forEach(queryExecutionResult -> {
+                idList.add(queryExecutionResult.getValue("id", ValueType.STRING));
+            });
+        });
+        queryOperation.onError(queryOperationError -> {
+            logService.error("Failed to query records: " + queryOperationError.getMessage());
+        });
+        queryOperation.execute();
 
         StringBuilder logMessage = new StringBuilder();
         logMessage.append("Attachments query: ").append(query.toString());
         logService.info(logMessage.toString());
 
-        QueryResponse queryResponse = queryService.query(query.toString());
-        List<String> idList = VaultCollections.newList();
-        queryResponse.streamResults().forEach(r -> idList.add(r.getValue("target_doc_id__v", ValueType.STRING)));
         return idList;
     }
 

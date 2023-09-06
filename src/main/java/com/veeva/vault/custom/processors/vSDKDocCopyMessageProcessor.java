@@ -26,7 +26,7 @@ import java.lang.*;
 public class vSDKDocCopyMessageProcessor implements MessageProcessor {
 
     /**
-     * Main Spark v2v MessaageProcessor. It determines the Integration Point
+     * Main Spark v2v Message Processor. It determines the Integration Point
      * related to the message and call the appropriate Processing code
      * to copy documents between two Vaults
      */
